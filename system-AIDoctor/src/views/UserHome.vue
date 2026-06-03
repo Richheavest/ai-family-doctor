@@ -91,8 +91,7 @@
 
         <!-- 家庭管理 -->
         <div v-else-if="activeMenu === 'family'" class="page-card">
-          <h3>👨‍👩‍👧‍👦 家庭健康管理</h3>
-          <el-empty description="家庭管理功能开发中..." />
+          <FamilyPage />
         </div>
 
         <!-- 挂号分诊 -->
@@ -114,6 +113,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
 import { startConsultAPI } from '@/api/consult'
+import FamilyPage from '@/views/FamilyPage.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
