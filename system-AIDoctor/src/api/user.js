@@ -12,16 +12,21 @@ export function registerAPI(data) {
 }
 
 // 获取当前用户信息
-export function getUserInfoAPI(userId) {
-  return request.get(`/user/info/${userId}`)
-}
-
-// 修改个人信息
-export function updateUserInfoAPI(userId, data) {
-  return request.put(`/user/update/${userId}`, data)
+export function getUserInfoAPI() {
+  return request.get('/user/info')
 }
 
 // 修改密码
-export function updatePasswordAPI(data) {
-  return request.put('/user/password', data)
+export function changePasswordAPI(oldPassword, newPassword) {
+  return request.put('/user/password', { oldPassword, newPassword })
+}
+
+// 修改个人信息
+export function updateProfileAPI(data) {
+  return request.put('/user/profile', data)
+}
+
+// 注销账号
+export function deactivateAccountAPI(password) {
+  return request.put('/user/deactivate', { password })
 }

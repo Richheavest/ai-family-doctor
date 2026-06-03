@@ -13,7 +13,7 @@ const ERROR_CODES = {
   // 用户模块 1xxx
   USER_NOT_EXIST: { code: 1001, msg: '账号不存在，请检查账号是否正确' },
   PASSWORD_ERROR: { code: 1002, msg: '密码错误，请重新输入' },
-  ACCOUNT_FROZEN: { code: 1003, msg: '账号已冻结，无法登录，请联系管理员' },
+  ACCOUNT_FROZEN: { code: 1003, msg: '该账号已注销或已被冻结，无法登录' },
   ACCOUNT_EXIST: { code: 1004, msg: '该账号已被注册，请更换账号或登录' },
   USERNAME_EMPTY: { code: 1005, msg: '账号不能为空' },
   PASSWORD_WEAK: { code: 1006, msg: '密码需包含字母+数字，长度≥8位' },

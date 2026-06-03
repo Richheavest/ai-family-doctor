@@ -62,10 +62,31 @@ request.interceptors.response.use(
     // 网络错误 / 超时
     if (error.code === 'ECONNABORTED') {
       ElMessage.error('请求超时，请检查网络')
-    } else if (!error.response) {
+      return Promise.reject(error)
+    }
+    if (!error.response) {
       ElMessage.error('网络连接失败，请检查后端服务是否启动')
+      return Promise.reject(error)
+    }
+
+    // HTTP 错误：优先使用后端返回的业务错误信息
+    const { data, status } = error.response
+    if (data && data.msg) {
+      // 特殊处理：401/403 跳转逻辑
+      if (status === 401 || data.code === 401 || data.code === 9001 || data.code === 9002) {
+        ElMessage.error(data.msg)
+        localStorage.removeItem('token')
+        router.push('/login')
+      } else if (data.code === 1003) {
+        // 账号冻结/注销 → 清除token跳回登录
+        ElMessage.error(data.msg)
+        localStorage.removeItem('token')
+        router.push('/login')
+      } else {
+        ElMessage.error(data.msg)
+      }
     } else {
-      const status = error.response.status
+      // 无业务消息时的兜底
       const msgMap = {
         400: '请求参数错误',
         401: '未登录，请先登录',

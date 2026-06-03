@@ -137,7 +137,7 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Phone, UserFilled } from '@element-plus/icons-vue'
-import { loginAPI } from '@/api/user'
+import { loginAPI, registerAPI } from '@/api/user'
 import { useUserStore } from '@/store/user'
 
 const router = useRouter()
@@ -223,14 +223,24 @@ const registerRules = {
   ]
 }
 
+const registerFormRef = ref(null)
+
 const handleRegister = async () => {
+  const valid = await registerFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+
   try {
     loading.value = true
-    // 注册功能后续对接后端
-    ElMessage.success('注册功能即将上线，请使用测试账号登录')
+    await registerAPI({
+      username: registerForm.username,
+      password: registerForm.password,
+      realName: registerForm.realName
+    })
+    ElMessage.success('注册成功，请登录')
     activeTab.value = 'login'
+    loginForm.username = registerForm.username
   } catch {
-    // 错误由拦截器统一处理
+    // 错误由 axios 拦截器统一处理
   } finally {
     loading.value = false
   }
