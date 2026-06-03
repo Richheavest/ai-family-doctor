@@ -1,0 +1,24 @@
+# ===== 依赖 =====
+node_modules/
+
+# ===== 构建产物 =====
+dist/
+
+# ===== 环境配置（含密码，不提交）=====
+.env
+
+# ===== 临时文件 =====
+_doc_extracted/
+*.log
+*.tmp
+
+# ===== 系统文件 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo

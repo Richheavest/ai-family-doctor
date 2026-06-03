@@ -1,0 +1,124 @@
+@startuml 健康体检管理系统层次方框图
+rectangle "健康体检管理系统" as System {
+
+    rectangle "订单管理" as OrderMgmt {
+        rectangle "订单签订"
+        rectangle "订单查询"
+    }
+
+    rectangle "体检登记" as ExamReg {
+        rectangle "电子表格导入"
+        rectangle "职业现场登记"
+        rectangle "问诊录入"
+        rectangle "加减项目"
+    }
+
+    rectangle "结果录入" as ResultInput {
+        rectangle "结果录入"
+        rectangle "仪器接口"
+        rectangle "历史结果提醒"
+    }
+
+    rectangle "主检评价" as MainAssess {
+        rectangle "结果汇总"
+        rectangle "主检评价"
+        rectangle "评价查询"
+    }
+
+    rectangle "查询统计" as QueryStat {
+        rectangle "查询统计"
+        rectangle "自定义统计"
+    }
+
+    rectangle "单位报告" as UnitReport {
+        rectangle "报告打印"
+        rectangle "单位报告评价"
+    }
+
+    rectangle "采样管理" as SampleMgmt {
+        rectangle "采样登记"
+    }
+
+    rectangle "基础数据" as BaseData {
+        rectangle "科室设置"
+        rectangle "科室设置"
+        rectangle "组合项目"
+        rectangle "套餐设置"
+    }
+
+    // 问诊录入的下级展开（按图中结构）
+    rectangle "问诊录入_1" as "问诊录入"
+    rectangle "问诊录入_2" as "问诊录入"
+    rectangle "问诊录入_3" as "问诊录入"
+    rectangle "问诊录入_4" as "问诊录入"
+    rectangle "问诊录入_5" as "问诊录入"
+    rectangle "问诊录入_6" as "问诊录入"
+    rectangle "问诊录入_7" as "问诊录入"
+    rectangle "问诊录入_8" as "问诊录入"
+    rectangle "问诊录入_9" as "问诊录入"
+    rectangle "问诊录入_10" as "问诊录入"
+    rectangle "问诊录入_11" as "问诊录入"
+    rectangle "问诊录入_12" as "问诊录入"
+
+    // 顶层连线
+    System --> OrderMgmt
+    System --> ExamReg
+    System --> ResultInput
+    System --> MainAssess
+    System --> QueryStat
+    System --> UnitReport
+    System --> SampleMgmt
+    System --> BaseData
+
+    // 订单管理子项
+    OrderMgmt --> "订单签订"
+    OrderMgmt --> "订单查询"
+
+    // 体检登记子项
+    ExamReg --> "电子表格导入"
+    ExamReg --> "职业现场登记"
+    ExamReg --> "问诊录入"
+    ExamReg --> "加减项目"
+
+    // 问诊录入下级
+    "问诊录入" --> "问诊录入_1"
+    "问诊录入" --> "问诊录入_2"
+    ResultInput --> "问诊录入_3"
+    ResultInput --> "问诊录入_4"
+    MainAssess --> "问诊录入_5"
+    MainAssess --> "问诊录入_6"
+    QueryStat --> "问诊录入_7"
+    QueryStat --> "问诊录入_8"
+    UnitReport --> "问诊录入_9"
+    UnitReport --> "问诊录入_10"
+    SampleMgmt --> "问诊录入_11"
+    BaseData --> "问诊录入_12"
+
+    // 结果录入子项
+    ResultInput --> "结果录入"
+    ResultInput --> "仪器接口"
+    ResultInput --> "历史结果提醒"
+
+    // 主检评价子项
+    MainAssess --> "结果汇总"
+    MainAssess --> "主检评价"
+    MainAssess --> "评价查询"
+
+    // 查询统计子项
+    QueryStat --> "查询统计"
+    QueryStat --> "自定义统计"
+
+    // 单位报告子项
+    UnitReport --> "报告打印"
+    UnitReport --> "单位报告评价"
+
+    // 采样管理子项
+    SampleMgmt --> "采样登记"
+
+    // 基础数据子项
+    BaseData --> "科室设置"
+    BaseData --> "科室设置"
+    BaseData --> "组合项目"
+    BaseData --> "套餐设置"
+}
+@enduml

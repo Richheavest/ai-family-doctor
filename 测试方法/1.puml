@@ -1,0 +1,36 @@
+@startuml
+!theme plain
+skinparam activity {
+    BackgroundColor #FFF3E0
+    BorderColor #F57C00
+    ArrowColor #F57C00
+}
+
+title TEST_NEW_02 黑盒错误推测法执行流程
+
+start
+:搭建测试环境\n(Chrome + 前后端服务);
+:预置测试数据\n(consultId=5001, 状态=进行中);
+
+:基于猜错法梳理测试场景;
+
+fork
+    :场景1: 正常结束问诊\n点击"结束问诊" -> 确认\n验证: 提示成功 + 跳转历史列表\n验证: 状态更新为"已结束";
+fork again
+    :场景2: 重复提交(推测高频错误)\n快速点击"确认结束"3次\n验证: 仅触发1次接口请求\n验证: 无数据异常;
+fork again
+    :场景3: 状态管控失效(推测逻辑漏洞)\n结束后尝试进入对话页\n验证: 输入框已禁用\n验证: 无法发送新消息;
+fork again
+    :场景4: 数据不一致(推测同步问题)\n刷新历史列表\n验证: 记录在列表中\n验证: 前端/数据库数据一致;
+end fork
+
+:汇总所有场景验证结果;
+
+if (所有场景均符合预期?) then (是)
+    :黑盒测试通过;
+else (否)
+    :黑盒测试不通过\n记录缺陷;
+endif
+
+stop
+@enduml

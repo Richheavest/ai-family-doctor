@@ -1,0 +1,382 @@
+================================================================================
+     AI家庭医生问诊Web系统 — 项目开发指南（小组协作版）
+     编制日期：2026-06-03
+================================================================================
+
+一、项目概述
+================================================================================
+
+  项目名称：AI家庭医生问诊Web系统
+  技术栈：
+    前端：Vite + Vue3 + ElementPlus + Pinia + Vue Router + Axios
+    后端：Node.js + Express + MySQL 8.0 + Redis + JWT
+    AI能力：Claude大模型API（预留，当前Mock模拟）
+
+  访问地址：
+    前端：http://localhost:5173
+    后端：http://localhost:3001
+    健康检查：http://localhost:3001/api/health
+
+  测试账号（密码统一 123456，数据库已初始化）：
+    zhangsan   → 普通用户（有家庭成员、有问诊记录）
+    lisi       → 普通用户
+    wangwu     → 家人用户（被zhangsan关联）
+    admin      → 管理员
+
+
+二、项目目录结构（完整）
+================================================================================
+
+  E:\软件工程\
+  ├── system-backend/                    # 🔧 后端项目（Node.js + Express）
+  │   ├── app.js                         #   应用入口
+  │   ├── package.json                   #   依赖清单
+  │   ├── .env                           #   环境变量（DB/JWT/Claude API配置）
+  │   ├── ai_family_doctor.sql           #   数据库建表+种子数据SQL
+  │   │
+  │   ├── config/                        # ⚙️ 配置层
+  │   │   ├── db.js                      #   MySQL连接池
+  │   │   ├── errorCode.js               #   全局统一错误码（200/400/401/403/404/500 + 业务码）
+  │   │   └── initDb.js                  #   数据库初始化脚本
+  │   │
+  │   ├── middleware/                     # 🛡️ 中间件层
+  │   │   ├── auth.js                    #   JWT鉴权（authRequired/authOptional/adminRequired）
+  │   │   └── errorHandler.js            #   全局异常捕获 + 404处理
+  │   │
+  │   ├── utils/                         # 🔨 工具层
+  │   │   ├── claudeApi.js               #   Claude大模型API调用工具（含系统提示词+Mock降级）
+  │   │   ├── jwtHelper.js               #   JWT令牌生成/验证
+  │   │   ├── response.js                #   统一响应格式 {code, msg, data}
+  │   │   └── appError.js                #   自定义业务异常类
+  │   │
+  │   ├── dao/                           # 🗄️ 数据访问层（全部10张表DAO已完成）
+  │   │   ├── baseDao.js                 #   通用CRUD基类（insert/findById/find/findWithPage/
+  │   │   │                               #     updateById/softDeleteById/逻辑删除/分页/模糊搜索）
+  │   │   ├── userDao.js                 #   t_user（无is_delete，status管理状态）
+  │   │   ├── consultDao.js              #   t_consult_record + t_consult_dialog
+  │   │   ├── familyDao.js               #   t_family_relation（有is_delete逻辑删除）
+  │   │   ├── healthDao.js               #   t_health_basic + t_health_sign + t_health_visit
+  │   │   ├── roleDao.js                 #   t_role + t_permission
+  │   │   └── logDao.js                  #   t_operate_log
+  │   │
+  │   ├── service/                       # 📋 业务逻辑层
+  │   │   ├── consultService.js          #   ✅ 已完成：AI问诊（发起/对话/结束/列表/详情/删除）
+  │   │   └── familyService.js           #   ✅ 已完成：家庭成员（添加/列表/修改/删除）
+  │   │
+  │   ├── controller/                    # 🎮 控制器层
+  │   │   ├── consultController.js       #   ✅ 已完成：/api/consult/* 全部接口
+  │   │   ├── familyController.js        #   ✅ 已完成：/api/family/* 全部接口
+  │   │   └── userController.js          #   ⚠️ 仅登录：/api/user/login
+  │   │
+  │   └── router/                        # 🧭 路由层
+  │       ├── index.js                   #   路由汇总 /api/*
+  │       ├── consult.js                 #   /api/consult/*
+  │       ├── family.js                  #   /api/family/*
+  │       └── user.js                    #   /api/user/*
+  │
+  ├── system-AIDoctor/                   # 🎨 前端项目（Vite + Vue3）
+  │   ├── index.html                     #   入口HTML
+  │   ├── package.json                   #   依赖清单
+  │   ├── vite.config.js                 #   Vite配置（/api → localhost:3001代理）
+  │   │
+  │   └── src/
+  │       ├── main.js                    #   应用入口（Pinia+ElementPlus+Router注册）
+  │       ├── App.vue                    #   根组件
+  │       │
+  │       ├── api/                       # 🔌 API请求层
+  │       │   ├── request.js             #   ✅ Axios封装（Token注入+错误码拦截+ElMessage弹窗）
+  │       │   ├── user.js                #   ✅ 登录/注册API
+  │       │   ├── consult.js             #   ✅ 问诊API（6个接口）
+  │       │   └── family.js              #   ✅ 家庭成员API（4个接口）
+  │       │
+  │       ├── store/
+  │       │   └── user.js                #   ✅ Pinia用户状态（token/角色/持久化）
+  │       │
+  │       ├── router/
+  │       │   └── index.js               #   ✅ 路由+守卫（未登录→登录页，按角色→不同主页）
+  │       │
+  │       ├── views/                     # 📄 页面组件
+  │       │   ├── Login.vue              #   ✅ 登录+注册（Tab切换）
+  │       │   ├── UserHome.vue           #   ⚠️ 仅仪表盘+AI问诊入口
+  │       │   ├── AdminHome.vue          #   ⚠️ 仅系统概览+用户列表
+  │       │   └── FamilyHome.vue         #   ⚠️ 仅仪表盘占位
+  │       │
+  │       └── styles/
+  │           └── global.css             #   全局样式+布局CSS类
+
+
+三、数据库表结构（10张表，均已建好）
+================================================================================
+
+  表名                  主键          逻辑删除    说明
+  ─────────────────────────────────────────────────────────────
+  t_user               user_id        ❌(status)  用户信息表
+  t_role               role_id        ❌          角色表
+  t_permission         perm_id        ❌          权限表
+  t_consult_record     consult_id     ✅          问诊记录表
+  t_consult_dialog     dialog_id      ❌          问诊对话表
+  t_health_basic       basic_id       ❌          基础健康档案表
+  t_health_sign        sign_id        ❌          体征数据表
+  t_health_visit       visit_id       ❌          就诊记录表
+  t_family_relation    relation_id    ✅          家庭成员关系表
+  t_operate_log        log_id         ❌          系统操作日志表
+
+
+四、后端接口清单（已完成 vs 待开发）
+================================================================================
+
+  【用户管理模块】
+  ┌────────┬──────────────────────┬──────────┬──────────┬─────────────────┐
+  │ 方法   │ 路径                 │ 鉴权     │ 状态     │ 负责成员        │
+  ├────────┼──────────────────────┼──────────┼──────────┼─────────────────┤
+  │ POST   │ /api/user/login      │ 无       │ ✅ 已完成 │ ——             │
+  │ POST   │ /api/user/register   │ 无       │ ❌ 待开发 │ _______________ │
+  │ POST   │ /api/user/forgot-pwd │ 无       │ ❌ 待开发 │ _______________ │
+  │ PUT    │ /api/user/password   │ auth     │ ❌ 待开发 │ _______________ │
+  │ GET    │ /api/user/info/:id   │ auth     │ ❌ 待开发 │ _______________ │
+  │ PUT    │ /api/user/update/:id │ auth     │ ❌ 待开发 │ _______________ │
+  └────────┴──────────────────────┴──────────┴──────────┴─────────────────┘
+
+  【AI问诊模块】
+  ┌────────┬────────────────────────────┬──────────┬──────────┬─────────────────┐
+  │ POST   │ /api/consult/start         │ auth     │ ✅ 已完成 │ ——             │
+  │ POST   │ /api/consult/sendDialog    │ auth     │ ✅ 已完成 │ ——             │
+  │ PUT    │ /api/consult/end           │ auth     │ ✅ 已完成 │ ——             │
+  │ GET    │ /api/consult/list          │ auth     │ ✅ 已完成 │ ——             │
+  │ GET    │ /api/consult/detail/:id    │ auth     │ ✅ 已完成 │ ——             │
+  │ DELETE │ /api/consult/:id           │ auth     │ ✅ 已完成 │ ——             │
+  └────────┴────────────────────────────┴──────────┴──────────┴─────────────────┘
+
+  【健康档案管理模块】⚠️ 全部待开发
+  ┌────────┬────────────────────────────┬──────────┬──────────┬─────────────────┐
+  │ POST   │ /api/health/basic          │ auth     │ ❌ 待开发 │ _______________ │
+  │ GET    │ /api/health/basic/:userId  │ auth     │ ❌ 待开发 │ _______________ │
+  │ PUT    │ /api/health/basic/:userId  │ auth     │ ❌ 待开发 │ _______________ │
+  │ POST   │ /api/health/sign           │ auth     │ ❌ 待开发 │ _______________ │
+  │ GET    │ /api/health/sign/list      │ auth     │ ❌ 待开发 │ _______________ │
+  │ GET    │ /api/health/sign/trend     │ auth     │ ❌ 待开发 │ _______________ │
+  │ POST   │ /api/health/visit          │ auth     │ ❌ 待开发 │ _______________ │
+  │ GET    │ /api/health/visit/list     │ auth     │ ❌ 待开发 │ _______________ │
+  └────────┴────────────────────────────┴──────────┴──────────┴─────────────────┘
+
+  【家庭健康管理模块】
+  ┌────────┬────────────────────────────┬──────────┬──────────┬─────────────────┐
+  │ POST   │ /api/family/add            │ auth     │ ✅ 已完成 │ ——             │
+  │ GET    │ /api/family/list           │ auth     │ ✅ 已完成 │ ——             │
+  │ PUT    │ /api/family/update/:id     │ auth     │ ✅ 已完成 │ ——             │
+  │ DELETE │ /api/family/:id            │ auth     │ ✅ 已完成 │ ——             │
+  └────────┴────────────────────────────┴──────────┴──────────┴─────────────────┘
+
+  【挂号分诊指导模块】⚠️ 全部待开发
+  ┌────────┬────────────────────────────┬──────────┬──────────┬─────────────────┐
+  │ POST   │ /api/triage/recommend      │ auth     │ ❌ 待开发 │ _______________ │
+  │ GET    │ /api/triage/hospitals      │ auth     │ ❌ 待开发 │ _______________ │
+  │ GET    │ /api/triage/guide/:dept    │ auth     │ ❌ 待开发 │ _______________ │
+  └────────┴────────────────────────────┴──────────┴──────────┴─────────────────┘
+
+  【后台管理模块】⚠️ 全部待开发
+  ┌────────┬────────────────────────────┬──────────┬──────────┬─────────────────┐
+  │ GET    │ /api/admin/users           │ admin    │ ❌ 待开发 │ _______________ │
+  │ PUT    │ /api/admin/user/:id/status │ admin    │ ❌ 待开发 │ _______________ │
+  │ GET    │ /api/admin/consults        │ admin    │ ❌ 待开发 │ _______________ │
+  │ DELETE │ /api/admin/consult/:id     │ admin    │ ❌ 待开发 │ _______________ │
+  │ GET    │ /api/admin/statistics      │ admin    │ ❌ 待开发 │ _______________ │
+  │ PUT    │ /api/admin/config          │ admin    │ ❌ 待开发 │ _______________ │
+  │ GET    │ /api/admin/logs            │ admin    │ ❌ 待开发 │ _______________ │
+  └────────┴────────────────────────────┴──────────┴──────────┴─────────────────┘
+
+  【合规与安全管理模块】⚠️ 全部待开发
+  ┌────────┬────────────────────────────┬──────────┬──────────┬─────────────────┐
+  │ POST   │ /api/compliance/audit      │ admin    │ ❌ 待开发 │ _______________ │
+  │ GET    │ /api/compliance/docs       │ 无       │ ❌ 待开发 │ _______________ │
+  └────────┴────────────────────────────┴──────────┴──────────┴─────────────────┘
+
+
+五、前端页面清单（已完成 vs 待开发）
+================================================================================
+
+  【用户端页面】路由 /home/user
+  ┌──────────────────────┬──────────┬──────────────────────────────────────────┐
+  │ 页面/组件            │ 状态     │ 待开发内容                               │
+  ├──────────────────────┼──────────┼──────────────────────────────────────────┤
+  │ 工作台（仪表盘）     │ ✅ 完成  │ 对接真实统计数据API                       │
+  │ AI问诊页             │ ⚠️ 框架  │ 多轮对话气泡UI、结束问诊按钮、           │
+  │                      │          │ 问诊历史列表、记录详情弹窗               │
+  │ 健康档案页           │ ❌ 待开发│ 基础档案表单、体征数据录入+趋势图、      │
+  │                      │          │ 就诊记录列表+图片上传、数据导出          │
+  │ 家庭管理页           │ ❌ 待开发│ 家人列表+添加弹窗、权限修改、            │
+  │                      │          │ 家庭健康看板、异常提醒                   │
+  │ 挂号分诊页           │ ❌ 待开发│ 症状输入→科室推荐→就医分级→             │
+  │                      │          │ 医院查询+就诊指南                        │
+  │ 个人中心             │ ❌ 待开发│ 个人信息修改、密码修改、隐私授权开关     │
+  └──────────────────────┴──────────┴──────────────────────────────────────────┘
+
+  【管理员端页面】路由 /home/admin
+  ┌──────────────────────┬──────────┬──────────────────────────────────────────┐
+  │ 系统概览             │ ✅ 完成  │ 对接后端统计API，图表可视化(ECharts)     │
+  │ 用户管理             │ ⚠️ 框架  │ 搜索/筛选、冻结/解冻操作、详情抽屉      │
+  │ 问诊管理             │ ❌ 待开发│ 问诊列表+筛选+详情查看+违规处理          │
+  │ 系统配置             │ ❌ 待开发│ AI参数配置、提示词模板编辑、             │
+  │                      │          │ 系统基础参数表单                         │
+  │ 日志审计             │ ❌ 待开发│ 日志列表+筛选+导出+详情                  │
+  └──────────────────────┴──────────┴──────────────────────────────────────────┘
+
+  【家人用户端页面】路由 /home/family
+  ┌──────────────────────┬──────────┬──────────────────────────────────────────┐
+  │ 工作台（仪表盘）     │ ✅ 完成  │ 对接真实数据                             │
+  │ 健康档案（只读）     │ ❌ 待开发│ 查看基础档案+体征趋势+就诊记录           │
+  │ 问诊记录             │ ❌ 待开发│ 被代问诊记录列表+详情                    │
+  └──────────────────────┴──────────┴──────────────────────────────────────────┘
+
+
+六、DAO层使用指南（后端开发必读）
+================================================================================
+
+  所有表DAO已封装完毕，直接引入即可使用，无需手写SQL。
+
+  【引入方式】
+    const userDao = require('./dao/userDao');
+    const consultDao = require('./dao/consultDao');
+    const familyDao = require('./dao/familyDao');
+    const healthDao = require('./dao/healthDao');
+    const roleDao = require('./dao/roleDao');
+    const logDao = require('./dao/logDao');
+
+  【通用方法（所有DAO通用）】
+    findById(id)              → 按主键查单条
+    findOne(conditions)       → 条件查单条 {字段: 值}
+    find(conditions, options) → 条件查列表（支持分页/模糊/范围/排序）
+    findWithPage(conditions, options) → 查列表+总数 {list, total, page, pageSize}
+    count(conditions)         → 统计总数
+    insert(data)              → 新增，返回自增ID
+    updateById(id, data)      → 按主键更新
+    update(conditions, data)  → 条件更新
+    deleteById(id)            → 物理删除
+    softDeleteById(id)        → 逻辑删除（仅t_consult_record、t_family_relation）
+    query(sql, params)        → 自定义SQL查询
+
+  【options参数说明】
+    {
+      page: 1,                // 页码（从1开始）
+      pageSize: 20,           // 每页条数
+      orderBy: 'create_time DESC',   // 排序
+      likeConditions: { name: '张三' },    // 模糊搜索
+      rangeConditions: { age: { min: 18, max: 60 } }  // 范围查询
+    }
+
+  【示例：开发一个健康档案接口】
+    // 在 controller 中：
+    const healthDao = require('../dao/healthDao');
+
+    // 查某用户的体征数据（带分页+时间范围）
+    const result = await healthDao.getSignsByUser(userId, {
+      page: 1,
+      pageSize: 20,
+      startTime: '2026-01-01',
+      endTime: '2026-06-30'
+    });
+    // → { list: [...], total: 15, page: 1, pageSize: 20 }
+
+
+七、前端开发指南（前端开发必读）
+================================================================================
+
+  【新增一个页面步骤】
+
+  1. 在 src/views/ 下创建 YourPage.vue
+  2. 在 src/router/index.js 的 routes 数组中添加路由：
+     {
+       path: '/home/user/health',
+       name: 'Health',
+       component: () => import('@/views/HealthPage.vue'),
+       meta: { title: '健康档案', role: [1] }   // role控制可访问的角色
+     }
+  3. 在对应主页侧边栏 menuItems 中添加菜单项
+  4. 在 src/api/ 下新建对应的API文件（如 health.js）
+  5. 调用API：import { xxxAPI } from '@/api/health'
+
+  【Axios请求示例】
+    import { getFamilyListAPI } from '@/api/family'
+
+    // 直接调用，错误由拦截器自动弹窗
+    const data = await getFamilyListAPI()
+    // data 已经是 response.data.data（拦截器自动解包）
+
+  【全局CSS类名（直接用）】
+    .login-container     → 全屏居中背景
+    .page-card           → 白色圆角卡片
+    .home-layout         → 侧边栏+主区域布局
+    .home-sidebar        → 深色侧边栏（220px宽）
+    .home-main           → 主区域
+    .home-header         → 顶部栏（60px高）
+    .home-content        → 内容区
+
+  【Pinia用户状态】
+    import { useUserStore } from '@/store/user'
+    const userStore = useUserStore()
+    userStore.token       // JWT令牌
+    userStore.userId      // 用户ID
+    userStore.roleId      // 角色（1普通/2家人/3管理员）
+    userStore.realName    // 真实姓名
+    userStore.isAdmin     // 是否管理员
+    userStore.logout()    // 退出登录
+
+
+八、建议分工方案（5人小组）
+================================================================================
+
+  成员A：后端—健康档案模块
+    后端：controller + service + router（healthBasic/sign/visit 共8个接口）
+    前端：健康档案页面（表单+趋势图+就诊记录列表）
+
+  成员B：后端—挂号分诊 + 合规安全模块
+    后端：controller + service + router（triage 3个接口 + compliance 2个接口）
+    前端：挂号分诊页面（科室推荐+就医分级+医院查询）
+
+  成员C：后端—后台管理模块
+    后端：controller + service + router（admin 7个接口）
+    前端：管理员端全部页面（用户管理+问诊管理+系统配置+日志审计+统计图表）
+
+  成员D：前端—用户端完善
+    前端：AI问诊完善（多轮对话UI+历史列表）、家庭管理页面、
+          个人中心页面、用户注册对接
+
+  成员E：后端—用户模块完善 + 测试
+    后端：controller + service + router（register/forgot-pwd/profile/等5个接口）
+    测试：全模块接口测试、前后端联调、Bug修复
+
+
+九、快速启动命令
+================================================================================
+
+  # 后端
+  cd E:/软件工程/system-backend
+  npm run dev           # 开发模式（nodemon热重载）
+  # 或
+  node app.js           # 直接启动
+
+  # 前端
+  cd E:/软件工程/system-AIDoctor
+  npm run dev           # 开发模式（热更新）
+  npm run build         # 生产构建
+
+  # 数据库
+  # 首次使用需导入SQL（已导入则跳过）
+  mysql -u root -p ai_family_doctor < E:/软件工程/system-backend/ai_family_doctor.sql
+
+
+十、开发规范
+================================================================================
+
+  1. 后端新增接口遵循：router → controller → service → dao 四层调用
+  2. 所有接口返回统一格式：{ code: 200, msg: 'xxx', data: {...} }
+  3. 业务异常用 throw new AppError('ERROR_KEY') 抛出
+  4. 错误码在 config/errorCode.js 中统一定义
+  5. 前端页面使用 ElementPlus 组件，保持风格统一
+  6. API请求统一用 src/api/ 下的封装函数，不要在组件中直接写axios
+  7. Git提交代码前先 npm run build 确保无构建错误
+  8. 中文注释，小驼峰命名变量，大驼峰命名组件
+
+================================================================================
+                              END
+================================================================================
