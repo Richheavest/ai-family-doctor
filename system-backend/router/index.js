@@ -5,11 +5,13 @@ const router = express.Router();
 const consultRouter = require('./consult');
 const familyRouter = require('./family');
 const userRouter = require('./user');
+const adminRouter = require('./admin');
 
 // API路由汇总
 router.use('/consult', consultRouter);   // /api/consult/*
 router.use('/family', familyRouter);     // /api/family/*
 router.use('/user', userRouter);         // /api/user/*
+router.use('/admin', adminRouter);       // /api/admin/*
 
 // 健康检查
 router.get('/health', (req, res) => {
