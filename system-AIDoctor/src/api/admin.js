@@ -30,3 +30,20 @@ export function updateUserRoleAPI(userId, roleId) {
 export function resetUserPasswordAPI(userId, newPassword) {
   return request.put(`/admin/users/${userId}/reset-pwd`, { newPassword })
 }
+
+// ==================== 问诊管理 ====================
+
+// 问诊列表（管理员视角，全量数据）
+export function getAdminConsultListAPI(params) {
+  return request.get('/admin/consults', { params })
+}
+
+// 问诊详情
+export function getAdminConsultDetailAPI(consultId) {
+  return request.get(`/admin/consults/${consultId}`)
+}
+
+// 删除问诊
+export function deleteAdminConsultAPI(consultId) {
+  return request.delete(`/admin/consults/${consultId}`)
+}

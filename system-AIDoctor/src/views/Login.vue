@@ -146,12 +146,12 @@ const userStore = useUserStore()
 const activeTab = ref('login')
 const loading = ref(false)
 
-// ========== 登录表单 ==========
-const loginForm = reactive({
-  username: 'zhangsan',
-  password: '123456',
-  remember: false
-})
+  // ========== 登录表单 ==========
+  const loginForm = reactive({
+    username: '',
+    password: '',
+    remember: false
+  })
 
 const loginRules = {
   username: [{ required: true, message: '请输入登录账号', trigger: 'blur' }],

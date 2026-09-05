@@ -196,10 +196,10 @@ const relations = [
   { label: '📋 其他', value: '其他' }
 ]
 
-const relationTag = (relation) => {
-  const map = { '父亲': '', '母亲': 'danger', '儿子': 'success', '女儿': 'success', '配偶': 'warning', '其他': 'info' }
-  return map[relation] || ''
-}
+  const relationTag = (relation) => {
+    const map = { '父亲': 'info', '母亲': 'danger', '儿子': 'success', '女儿': 'success', '配偶': 'warning', '其他': 'info' }
+    return map[relation] || 'info'
+  }
 
 const formatTime = (time) => {
   if (!time) return ''

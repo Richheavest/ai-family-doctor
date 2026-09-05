@@ -39,6 +39,11 @@ const ERROR_CODES = {
   HEALTH_RECORD_NOT_FOUND: { code: 4001, msg: '健康档案不存在，请先完善档案' },
   SIGN_DATA_INVALID: { code: 4002, msg: '数据不合法，请输入合理的体征数据' },
 
+  // 挂号分诊模块 5xxx
+  TRIAGE_SYMPTOM_EMPTY: { code: 5001, msg: '请输入您的症状，以便为您推荐合适的科室' },
+  TRIAGE_NO_MATCH: { code: 5002, msg: '未匹配到合适的科室，建议前往综合医院普通内科或急诊科就诊' },
+  TRIAGE_DEPT_NOT_FOUND: { code: 5003, msg: '未找到该科室的就诊指南，请查阅医院官网或电话咨询' },
+
   // 系统模块 9xxx
   TOKEN_EXPIRED: { code: 9001, msg: '登录凭证已过期，请重新登录' },
   TOKEN_INVALID: { code: 9002, msg: '登录凭证无效' },

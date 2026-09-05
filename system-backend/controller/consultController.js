@@ -11,11 +11,15 @@ async function startConsult(req, res) {
   try {
     const { patientId, symptom } = req.body;
     const userId = req.user.userId;
-
+    
+    console.log('[startConsult] 开始发起问诊:', { userId, patientId, symptom });
+    
     const result = await consultService.startConsult(userId, patientId, symptom);
+    console.log('[startConsult] 问诊发起成功:', { consultId: result.consultId });
     res.json(success(result, '问诊发起成功'));
 
   } catch (err) {
+    console.error('[startConsult] 发起问诊失败:', err);
     res.status(err.httpStatus || 400).json(fail(err.errorKey || 'INTERNAL_ERROR', err.message));
   }
 }
@@ -70,9 +74,32 @@ async function getConsultList(req, res) {
     const pageSize = parseInt(req.query.pageSize) || 20;
     const userId = req.user.userId;
 
-    const list = await consultService.getConsultList(userId, page, pageSize);
-    res.json(success({ list, page, pageSize }));
+    const data = await consultService.getConsultList(userId, page, pageSize);
+    res.json(success(data));
 
+  } catch (err) {
+    res.status(err.httpStatus || 400).json(fail(err.errorKey || 'INTERNAL_ERROR', err.message));
+  }
+}
+
+/**
+ * GET /api/consult/consult-count — 获取问诊次数
+ */
+async function getConsultCount(req, res) {
+  try {
+    const userId = req.user.userId;
+    
+    // 统计进行中和已完成的问诊数
+    const [ongoingCount, completedCount] = await Promise.all([
+      consultDao.count({ user_id: userId, consult_status: 0 }),
+      consultDao.count({ user_id: userId, consult_status: 1 })
+    ]);
+    
+    res.json(success({
+      total: ongoingCount + completedCount,
+      ongoing: ongoingCount,
+      completed: completedCount
+    }));
   } catch (err) {
     res.status(err.httpStatus || 400).json(fail(err.errorKey || 'INTERNAL_ERROR', err.message));
   }

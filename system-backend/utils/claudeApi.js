@@ -1,10 +1,10 @@
-// utils/claudeApi.js — Claude大模型API调用工具类
+// utils/claudeApi.js — DeepSeek大模型API调用工具类
 // 用于AI问诊模块请求大模型生成问诊回复
 require('dotenv').config();
 
-const CLAUDE_API_URL = process.env.CLAUDE_API_URL || 'https://api.anthropic.com/v1/messages';
-const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY || '';
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com/v1/chat/completions';
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 
 // AI角色系统提示词（严格遵循需求规格说明书设计）
 const SYSTEM_PROMPT = `【角色设定】
@@ -12,9 +12,11 @@ const SYSTEM_PROMPT = `【角色设定】
 
 【核心规则】
 1. 必须采用引导式问诊，用户输入症状后，主动追问关键信息，包括发病时间、诱因、伴随症状、既往病史、过敏史等核心内容。
-2. 关键信息不足时，严禁做出任何疾病诊断，仅可继续引导用户补充信息，不得编造内容。
-3. 仅可输出病情可能性分析，不得给出确诊结论，不得夸大病情。
-4. 严禁输出任何治疗方案、用药建议，仅可给出通用的居家护理建议和健康科普。
+2. 每次只询问一个问题，用户回答了之后再问下一个问题。
+3. 询问轮次不易过多，每论询问都要先给出可能的病情判断然后再继续询问，直至获取足够信息便给出最终判断（总轮次最好不超过10轮）。
+4. 仅可输出病情可能性分析，不得给出确诊结论，不得夸大病情。
+5. 严禁输出任何治疗方案、用药建议，仅可给出通用的居家护理建议、就医建议和健康科普。
+6. 如果用户不是在问诊，而是咨询某些医学、健康相关的问题，则不需要进行追问，可以直接给出科普类的回答，但仍应当询问用户是否有相关病情。
 
 【输出规范】
 1. 语言通俗易懂，符合医学规范，不得使用违规、夸大、虚假的表述。
@@ -22,15 +24,86 @@ const SYSTEM_PROMPT = `【角色设定】
 3. 所有回答的结尾，必须包含固定免责声明。`;
 
 /**
- * 调用Claude API（多轮对话模式）
+ * 清理AI返回的文本，去掉markdown代码块标记
+ * @param {string} text - AI原始返回文本
+ * @returns {string} 清理后的文本
+ */
+function cleanAIResponse(text) {
+  let cleaned = text.trim();
+  // 去掉开头的 ```json 或 ``` 标记
+  cleaned = cleaned.replace(/^```(?:json|JSON)?\s*\n?/i, '');
+  // 去掉结尾的 ``` 标记
+  cleaned = cleaned.replace(/\n?```\s*$/i, '');
+  return cleaned.trim();
+}
+
+/**
+ * 从AI返回文本中提取JSON对象（支持JSON后带额外文本，如免责声明）
+ * @param {string} text - 清理后的AI返回文本
+ * @returns {{json: Object|null, extraText: string}}
+ */
+function extractJSON(text) {
+  // 找到第一个 {
+  const firstBrace = text.indexOf('{');
+  if (firstBrace === -1) {
+    return { json: null, extraText: text };
+  }
+
+  // 用括号匹配找到对应的 }
+  let depth = 0;
+  let jsonEnd = -1;
+  let inString = false;
+  let escape = false;
+  for (let i = firstBrace; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        jsonEnd = i;
+        break;
+      }
+    }
+  }
+
+  if (jsonEnd === -1) {
+    return { json: null, extraText: text };
+  }
+
+  const jsonStr = text.substring(firstBrace, jsonEnd + 1);
+  const extraText = text.substring(jsonEnd + 1).trim();
+
+  try {
+    return { json: JSON.parse(jsonStr), extraText };
+  } catch {
+    return { json: null, extraText: text };
+  }
+}
+
+/**
+ * 调用DeepSeek API（多轮对话模式）
  * @param {Array} messages - 对话历史 [{role:'user'|'assistant', content:'...'}]
  * @param {string} healthProfile - 用户健康档案摘要（可选）
+ * @param {number} timeoutMs - 超时时间（毫秒），默认60000（60秒）
  * @returns {Promise<Object>} AI回复
  */
-async function callClaude(messages, healthProfile = '') {
-  if (!CLAUDE_API_KEY || CLAUDE_API_KEY === 'your_claude_api_key_here') {
+async function callClaude(messages, healthProfile = '', timeoutMs = 60000) {
+  if (!DEEPSEEK_API_KEY || DEEPSEEK_API_KEY === 'your_deepseek_api_key_here') {
     // API Key未配置时返回模拟回复（开发调试用）
-    console.warn('[Claude] API Key未配置，使用模拟回复');
+    console.warn('[DeepSeek] API Key未配置，使用模拟回复');
     return mockResponse(messages);
   }
 
@@ -52,25 +125,26 @@ async function callClaude(messages, healthProfile = '') {
     messageList.push({ role: msg.role, content: msg.content });
   });
 
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    const response = await fetch(CLAUDE_API_URL, {
+    console.log('[DeepSeek] 开始调用API，消息数量:', messageList.length);
+
+    const response = await fetch(DEEPSEEK_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': CLAUDE_API_KEY,
-        'anthropic-version': '2023-06-01'
+        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
       },
       body: JSON.stringify({
-        model: CLAUDE_MODEL,
-        max_tokens: 2048,
-        system: SYSTEM_PROMPT,
-        messages: messages.map(m => ({
+        model: DEEPSEEK_MODEL,
+        messages: messageList.map(m => ({
           role: m.role,
           content: m.content
-        }))
+        })),
+        temperature: 0.7,
+        max_tokens: 2048
       }),
       signal: controller.signal
     });
@@ -78,20 +152,37 @@ async function callClaude(messages, healthProfile = '') {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`Claude API返回错误: ${response.status}`);
+      const errorText = await response.text();
+      console.error('[DeepSeek] API返回错误状态:', response.status, errorText);
+      throw new Error(`DeepSeek API返回错误 (${response.status}): ${errorText}`);
     }
 
     const data = await response.json();
-    const aiContent = data.content?.[0]?.text || '';
+    console.log('[DeepSeek] API调用成功，返回内容长度:', data.choices?.[0]?.message?.content?.length || 0);
+    const aiRawContent = data.choices?.[0]?.message?.content || '';
 
-    // 尝试解析AI返回的JSON
-    try {
-      return JSON.parse(aiContent);
-    } catch {
-      // 如果AI返回的不是JSON，包装成标准格式
+    // 清理markdown代码块标记后提取JSON
+    const cleanedContent = cleanAIResponse(aiRawContent);
+    const { json: parsed, extraText } = extractJSON(cleanedContent);
+
+    if (parsed) {
+      // JSON解析成功，content取JSON中的字段，额外的免责声明文本拼接到末尾
+      let content = parsed.content || '';
+      if (extraText) {
+        content += '\n\n' + extraText;
+      }
+      return {
+        phase: parsed.phase || '分析',
+        content,
+        medicalPriority: parsed.medicalPriority || null,
+        recommendDepartment: parsed.recommendDepartment || null,
+        nursingAdvice: parsed.nursingAdvice || null
+      };
+    } else {
+      // 无法提取JSON，直接用清理后的文本作为content
       return {
         phase: '分析',
-        content: aiContent,
+        content: cleanedContent,
         medicalPriority: null,
         recommendDepartment: null,
         nursingAdvice: null
@@ -99,11 +190,11 @@ async function callClaude(messages, healthProfile = '') {
     }
   } catch (error) {
     if (error.name === 'AbortError') {
-      console.error('[Claude] API调用超时');
+      console.error('[DeepSeek] API调用超时');
       throw new Error('AI服务响应超时，请稍后重试');
     }
-    console.error('[Claude] API调用失败:', error.message);
-    throw new Error('AI服务繁忙，请稍后重试');
+    console.error('[DeepSeek] API调用失败:', error.message, error.stack);
+    throw new Error(`AI服务繁忙: ${error.message}`);
   }
 }
 

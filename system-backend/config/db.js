@@ -9,6 +9,8 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'ai_family_doctor',
   charset: 'utf8mb4',
+  timezone: '+08:00',
+  dateStrings: true,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

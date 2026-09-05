@@ -134,6 +134,81 @@
           </div>
         </div>
 
+        <!-- ==================== 问诊管理 ==================== -->
+        <div v-else-if="activeMenu === 'consults'">
+          <!-- 搜索栏 -->
+          <div class="page-card" style="margin-bottom:12px">
+            <el-form :inline="true" @submit.prevent>
+              <el-form-item>
+                <el-input v-model="consultSearchKeyword" placeholder="搜索症状关键词" clearable
+                          style="width:220px" @keyup.enter="loadConsultList" />
+              </el-form-item>
+              <el-form-item>
+                <el-select v-model="consultSearchStatus" placeholder="问诊状态" clearable style="width:140px"
+                           @change="loadConsultList">
+                  <el-option label="进行中" :value="0" />
+                  <el-option label="已完成" :value="1" />
+                </el-select>
+              </el-form-item>
+              <el-form-item>
+                <el-date-picker v-model="consultDateRange" type="daterange"
+                                range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期"
+                                value-format="YYYY-MM-DD" style="width:280px"
+                                @change="loadConsultList" />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" native-type="button" @click="loadConsultList">搜索</el-button>
+                <el-button native-type="button" @click="resetConsultSearch">重置</el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+
+          <!-- 问诊表格 -->
+          <div class="page-card">
+            <el-table :data="consultList" stripe v-loading="consultLoading" style="width:100%">
+              <el-table-column prop="consult_id" label="ID" width="70" />
+              <el-table-column label="发起用户" width="130">
+                <template #default="{ row }">
+                  {{ row.user_real_name }} ({{ row.user_username }})
+                </template>
+              </el-table-column>
+              <el-table-column label="就诊人" width="130">
+                <template #default="{ row }">
+                  {{ row.patient_real_name }} ({{ row.patient_username }})
+                </template>
+              </el-table-column>
+              <el-table-column prop="symptom" label="症状描述" min-width="180" show-overflow-tooltip />
+              <el-table-column label="状态" width="90">
+                <template #default="{ row }">
+                  <el-tag :type="row.consult_status === 0 ? 'warning' : 'success'" size="small">
+                    {{ row.consult_status === 0 ? '进行中' : '已完成' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="开始时间" width="170">
+                <template #default="{ row }">
+                  {{ fmt(row.start_time) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="160" fixed="right">
+                <template #default="{ row }">
+                  <el-button size="small" @click="openConsultDetail(row)">详情</el-button>
+                  <el-button size="small" type="danger" @click="handleDeleteConsult(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <el-pagination
+              v-model:current-page="consultPage"
+              :page-size="consultPageSize"
+              :total="consultTotal"
+              layout="total, prev, pager, next"
+              style="margin-top:16px;justify-content:flex-end"
+              @current-change="loadConsultList"
+            />
+          </div>
+        </div>
+
         <!-- 其他菜单占位 -->
         <div v-else class="page-card">
           <el-empty :description="currentTitle + '功能开发中...'" />
@@ -167,6 +242,64 @@
       </el-descriptions>
     </el-dialog>
 
+    <!-- ==================== 问诊详情弹窗 ==================== -->
+    <el-dialog v-model="consultDetailVisible" title="问诊详情" width="750px">
+      <div v-if="consultDetail">
+        <el-descriptions :column="2" border style="margin-bottom:16px">
+          <el-descriptions-item label="问诊ID">{{ consultDetail.consultId }}</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="consultDetail.consultStatus === 0 ? 'warning' : 'success'">
+              {{ consultDetail.consultStatus === 0 ? '进行中' : '已完成' }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="发起用户">{{ consultDetail.user?.realName }} ({{ consultDetail.user?.username }})</el-descriptions-item>
+          <el-descriptions-item label="就诊人">{{ consultDetail.patient?.realName }} ({{ consultDetail.patient?.username }})</el-descriptions-item>
+          <el-descriptions-item label="开始时间">{{ fmt(consultDetail.startTime) }}</el-descriptions-item>
+          <el-descriptions-item label="结束时间">{{ fmt(consultDetail.endTime) || '进行中' }}</el-descriptions-item>
+          <el-descriptions-item label="初始症状" :span="2">{{ consultDetail.symptom }}</el-descriptions-item>
+        </el-descriptions>
+
+        <!-- AI分析结果（仅已完成时） -->
+        <el-descriptions v-if="consultDetail.consultStatus === 1" :column="1" border
+                         title="AI 分析结果" style="margin-bottom:16px">
+          <el-descriptions-item label="病情分析">{{ consultDetail.illnessAnalysis || '无' }}</el-descriptions-item>
+          <el-descriptions-item label="就医优先级">
+            <el-tag v-if="consultDetail.medicalPriority === 1" type="danger">紧急就医</el-tag>
+            <el-tag v-else-if="consultDetail.medicalPriority === 2" type="warning">常规就诊</el-tag>
+            <el-tag v-else-if="consultDetail.medicalPriority === 3" type="success">居家观察</el-tag>
+            <span v-else>未设置</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="推荐科室">{{ consultDetail.recommendDepartment || '未指定' }}</el-descriptions-item>
+          <el-descriptions-item label="护理建议">{{ consultDetail.nursingAdvice || '无' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 对话历史 -->
+        <h4 style="margin:12px 0 8px">对话记录</h4>
+        <div style="max-height:300px;overflow-y:auto;background:#f5f7fa;padding:12px;border-radius:8px">
+          <div v-for="d in consultDetail.dialogList" :key="d.dialogId"
+               style="margin-bottom:12px"
+               :style="{ textAlign: d.speaker === 1 ? 'right' : 'left' }">
+            <div :style="{
+              display:'inline-block', maxWidth:'80%', padding:'10px 14px', borderRadius:'12px',
+              background: d.speaker === 1 ? '#e6a23c' : '#fff',
+              color: d.speaker === 1 ? '#fff' : '#303133',
+              border: d.speaker === 1 ? 'none' : '1px solid #dcdfe6',
+              whiteSpace:'pre-wrap', wordBreak:'break-word', textAlign:'left'
+            }">
+              <div style="font-size:12px;margin-bottom:4px;opacity:0.75">
+                {{ d.speaker === 1 ? '用户' : 'AI医生' }} · {{ fmt(d.speakTime) }}
+              </div>
+              {{ d.dialogContent }}
+            </div>
+          </div>
+          <el-empty v-if="!consultDetail.dialogList?.length" description="暂无对话记录" />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="consultDetailVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- ==================== 重置密码弹窗 ==================== -->
     <el-dialog v-model="pwdVisible" title="重置密码" width="380px">
       <el-form>
@@ -189,12 +322,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Monitor, User, ChatDotRound, Setting, Document } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user'
-import { getUserListAPI, getUserDetailAPI, updateUserStatusAPI, updateUserRoleAPI, resetUserPasswordAPI, getStatisticsAPI } from '@/api/admin'
+import { getUserListAPI, getUserDetailAPI, updateUserStatusAPI, updateUserRoleAPI, resetUserPasswordAPI, getStatisticsAPI, getAdminConsultListAPI, getAdminConsultDetailAPI, deleteAdminConsultAPI } from '@/api/admin'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -262,6 +395,68 @@ const resetSearch = () => {
   searchStatus.value = null
   page.value = 1
   loadUserList()
+}
+
+// ========== 问诊管理 ==========
+const consultList = ref([])
+const consultLoading = ref(false)
+const consultPage = ref(1)
+const consultPageSize = ref(10)
+const consultTotal = ref(0)
+const consultSearchKeyword = ref('')
+const consultSearchStatus = ref(null)
+const consultDateRange = ref(null)
+
+const loadConsultList = async () => {
+  consultLoading.value = true
+  try {
+    const params = {
+      page: consultPage.value,
+      pageSize: consultPageSize.value,
+      keyword: consultSearchKeyword.value || undefined,
+      consultStatus: consultSearchStatus.value !== null && consultSearchStatus.value !== '' ? consultSearchStatus.value : undefined,
+      startDate: consultDateRange.value?.[0] || undefined,
+      endDate: consultDateRange.value?.[1] || undefined
+    }
+    const data = await getAdminConsultListAPI(params)
+    consultList.value = data.list
+    consultTotal.value = data.total
+  } catch { consultList.value = [] }
+  finally { consultLoading.value = false }
+}
+
+const resetConsultSearch = () => {
+  consultSearchKeyword.value = ''
+  consultSearchStatus.value = null
+  consultDateRange.value = null
+  consultDateRange.value = null
+  consultPage.value = 1
+  loadConsultList()
+}
+
+const consultDetailVisible = ref(false)
+const consultDetail = ref(null)
+
+const openConsultDetail = async (row) => {
+  try {
+    consultDetail.value = await getAdminConsultDetailAPI(row.consult_id)
+    consultDetailVisible.value = true
+  } catch { /* 拦截器处理 */ }
+}
+
+const handleDeleteConsult = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除问诊记录 #${row.consult_id} 吗？该操作不可恢复。`,
+      '删除确认',
+      { type: 'warning', confirmButtonText: '确定删除', cancelButtonText: '取消' }
+    )
+  } catch { return }
+  try {
+    await deleteAdminConsultAPI(row.consult_id)
+    ElMessage.success('问诊记录已删除')
+    loadConsultList()
+  } catch { /* 拦截器处理 */ }
 }
 
 // ========== 冻结/解冻 ==========
@@ -333,6 +528,13 @@ const handleResetPwd = async () => {
 onMounted(() => {
   loadStats()
   loadUserList()
+})
+
+// 切换到问诊管理时自动加载
+watch(activeMenu, (newVal) => {
+  if (newVal === 'consults') {
+    loadConsultList()
+  }
 })
 
 const handleLogout = () => {

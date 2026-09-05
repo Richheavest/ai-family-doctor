@@ -1,6 +1,7 @@
 // service/consultService.js — AI问诊业务逻辑层
 const consultDao = require('../dao/consultDao');
 const userDao = require('../dao/userDao');
+const healthService = require('./healthService');
 const { callClaude } = require('../utils/claudeApi');
 const AppError = require('../utils/appError');
 
@@ -22,23 +23,36 @@ const consultService = {
       throw new AppError('PATIENT_NOT_EXIST');
     }
 
+    console.log('[consultService] 参数校验通过:', { userId, patientId, symptom: symptom.substring(0, 20) + '...' });
+
     // 2. 校验就诊人是否存在且状态正常
     const patientUser = await userDao.findById(patientId);
     if (!patientUser || patientUser.status !== 1) {
       throw new AppError('PATIENT_NOT_EXIST');
     }
 
+    console.log('[consultService] 就诊人存在:', { patientName: patientUser.real_name });
+
     // 3. 创建问诊记录（状态：进行中=0）
     const consultId = await consultDao.createRecord(userId, patientId, symptom.trim());
+    console.log('[consultService] 问诊记录创建成功:', { consultId });
 
-    // 4. 调用AI生成初始回复
+    // 4. 获取就诊人的健康档案摘要，辅助AI诊断
+    const healthProfile = await healthService.getHealthProfileSummary(patientId);
+    if (healthProfile) {
+      console.log('[consultService] 已获取健康档案摘要，长度:', healthProfile.length);
+    }
+
+    // 5. 调用AI生成初始回复（传入健康档案）
     const aiResponse = await callClaude([
       { role: 'user', content: symptom.trim() }
-    ]);
+    ], healthProfile);
 
-    // 5. 保存对话记录（先用户输入，再AI回复，保证时间线）
+    console.log('[consultService] AI响应获取成功:', { phase: aiResponse.phase });
+
+    // 6. 保存对话记录（先用户输入，再AI回复，保证时间线）
     await consultDao.addDialog(consultId, 1, symptom.trim());  // 用户
-    const aiContent = aiResponse.content || JSON.stringify(aiResponse);
+    const aiContent = aiResponse.content || '';
     await consultDao.addDialog(consultId, 2, aiContent);       // AI
 
     // 6. 返回结果
@@ -85,7 +99,7 @@ const consultService = {
       throw new AppError('CONSULT_ALREADY_END');
     }
 
-    // 3. 如果是用户发言，保存并调用AI回复
+      // 3. 如果是用户发言，保存并调用AI回复
     if (speaker === 1) {
       await consultDao.addDialog(consultId, 1, dialogContent.trim());
 
@@ -95,8 +109,14 @@ const consultService = {
         .filter(d => d.speaker === 1)
         .map(d => ({ role: 'user', content: d.dialog_content }));
 
-      // 调用AI
-      const aiResponse = await callClaude(messages);
+      // 获取就诊人的健康档案摘要，辅助AI诊断
+      const healthProfile = await healthService.getHealthProfileSummary(consult.patient_id);
+      if (healthProfile) {
+        console.log('[consultService] 已获取健康档案摘要，长度:', healthProfile.length);
+      }
+
+      // 调用AI（传入健康档案）
+      const aiResponse = await callClaude(messages, healthProfile);
       const aiContent = aiResponse.content || JSON.stringify(aiResponse);
       await consultDao.addDialog(consultId, 2, aiContent);
 
@@ -140,25 +160,58 @@ const consultService = {
       throw new AppError('CONSULT_ALREADY_END');
     }
 
-    // 2. 如果没有传入分析结果，调用AI生成最终分析
+    // 2. 如果没有传入分析结果，异步调用AI生成最终分析（不阻塞响应）
     let finalAnalysis = options;
     if (!options.illnessAnalysis) {
+      // 先获取对话历史，用于异步AI调用
       const historyDialogs = await consultDao.getDialogsByConsult(consultId);
       const messages = historyDialogs
         .filter(d => d.speaker === 1)
         .map(d => ({ role: 'user', content: d.dialog_content }));
       messages.push({ role: 'user', content: '请根据以上所有信息，生成最终的病情分析、就医优先级、推荐科室和居家护理建议。' });
 
-      const aiResponse = await callClaude(messages);
+      // 先用占位内容结束问诊，立即返回响应
       finalAnalysis = {
-        illnessAnalysis: aiResponse.content || '',
-        medicalPriority: aiResponse.medicalPriority || 3,
-        recommendDepartment: aiResponse.recommendDepartment || '',
-        nursingAdvice: aiResponse.nursingAdvice || ''
+        illnessAnalysis: 'AI正在生成病情分析，请稍后刷新页面查看...',
+        medicalPriority: null,
+        recommendDepartment: '',
+        nursingAdvice: ''
       };
+
+      // 获取就诊人的健康档案摘要，辅助AI结束诊断
+      const healthProfile = await healthService.getHealthProfileSummary(consult.patient_id);
+      if (healthProfile) {
+        console.log('[consultService] 已获取健康档案摘要，长度:', healthProfile.length);
+      }
+
+      // 异步调用AI（不阻塞），完成后自动更新记录
+      callClaude(messages, healthProfile, 180000)
+        .then(async (aiResponse) => {
+          try {
+            await consultDao.endRecord(consultId, {
+              illnessAnalysis: aiResponse.content || '',
+              medicalPriority: aiResponse.medicalPriority || 3,
+              recommendDepartment: aiResponse.recommendDepartment || '',
+              nursingAdvice: aiResponse.nursingAdvice || ''
+            });
+            console.log('[consultService] 后台AI分析已更新:', consultId);
+          } catch (err) {
+            console.error('[consultService] 后台更新分析失败:', err.message);
+          }
+        })
+        .catch(err => {
+          console.error('[consultService] 后台AI调用失败:', err.message);
+          // AI调用失败时更新为友好提示
+          consultDao.endRecord(consultId, {
+            illnessAnalysis: 'AI服务暂时繁忙，分析生成失败，请稍后重新查看或联系客服。',
+            medicalPriority: 3,
+            recommendDepartment: '',
+            nursingAdvice: ''
+          }).catch(e => console.error('[consultService] 失败回写也失败了:', e.message));
+        });
     }
 
-    // 3. 更新问诊记录为已完成
+    // 3. 更新问诊记录为已完成（同步执行）
     await consultDao.endRecord(consultId, finalAnalysis);
 
     // 4. 返回完整记录
